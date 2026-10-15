@@ -63,5 +63,39 @@ public class CalculateSharesBasisPathTests
             actual.Select(s => s.Amount).ToArray(),
             "Wrong share amounts for " + pathId);
     }
+    /// <summary>
+    /// Checks that a negative subtotal is rejected.
+    /// </summary>
+    [TestMethod]
+    public void CalculateShares_P2_InvalidBill_ThrowsArgumentException()
+    {
+        var bill = new Bill(-1m, 0m, TipMode.None, 0m);
+        var attendees = new List<Attendee> { new("A") };
+        var splitter = new Splitter();
+
+        Action calculate = () => splitter.CalculateShares(
+            bill, attendees, RoundingMode.Bankers);
+
+        ArgumentException ex =
+                Assert.ThrowsException<ArgumentException>(calculate);
+
+             StringAssert.Contains(ex.Message, "Subtotal");
+    }
+
+    /// <summary>
+    /// Checks that an undefined rounding mode is rejected.
+    /// </summary>
+    [TestMethod]
+     public void CalculateShares_P3_UndefinedRoundingMode_ThrowsArgumentOutOfRange()
+    {
+         var bill = new Bill(10m, 0m, TipMode.None, 0m);
+         var attendees = new List<Attendee> { new("A") };
+        var splitter = new Splitter();
+
+        Action calculate = () => splitter.CalculateShares(
+            bill, attendees, (RoundingMode)99);
+
+        Assert.ThrowsException<ArgumentOutOfRangeException>(calculate);
+    }
 }
 
