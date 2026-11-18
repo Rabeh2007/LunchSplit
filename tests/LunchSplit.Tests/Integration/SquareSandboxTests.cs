@@ -12,6 +12,26 @@ public class SquareSandboxTests
         string currency = "CAD") => new(1.00m, currency, Guid.NewGuid().ToString(), nonce);
 
     [TestMethod]
+    public async Task M3_08_EurPaymentAtCadLocation_ReturnsHttp400ValidationError()
+    {
+        // Arrange: EUR is valid currency syntax but is unsupported by our CAD location.
+        // Send it to Square so this test exercises gateway validation, not a local guard.
+        using var service = SquarePaymentService.FromEnvironment();
+
+        // Act.
+        var result = await service.ProcessPaymentAsync(Request(currency: "EUR"));
+
+        // Assert: a currency mismatch must fail without a successful transaction.
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(400, result.HttpStatusCode);
+        Assert.AreEqual("INVALID_REQUEST_ERROR", result.GatewayErrorCategory);
+        Assert.AreEqual("amount_money.currency", result.GatewayErrorField);
+        Assert.AreEqual("INVALID_VALUE", result.GatewayErrorCode);
+        Assert.AreEqual(result.GatewayErrorCode, result.ErrorCode);
+        Assert.IsTrue(string.IsNullOrEmpty(result.TransactionId));
+    }
+
+    [TestMethod]
     public async Task M3_02_DeclinedMagicNonce_ReturnsCardDeclined()
     {
         // Arrange: Square's magic nonce deterministically declines the test card.

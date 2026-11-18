@@ -69,10 +69,13 @@ public sealed class SquarePaymentService : IPaymentProcessor, IDisposable
         {
             // Square can return GENERIC_DECLINE for the declined magic nonce.
             // Expose the stable domain code while preserving the actual vendor code.
-            var gatewayCode = error.Errors.FirstOrDefault()?.Code.ToString() ?? "GATEWAY_ERROR";
+            var gatewayError = error.Errors.FirstOrDefault();
+            var gatewayCode = gatewayError?.Code.ToString() ?? "GATEWAY_ERROR";
             var domainCode = gatewayCode == "GENERIC_DECLINE" ? "CARD_DECLINED" : gatewayCode;
             return new PaymentResult(false, ErrorCode: domainCode,
-                HttpStatusCode: error.StatusCode, GatewayErrorCode: gatewayCode);
+                HttpStatusCode: error.StatusCode, GatewayErrorCode: gatewayCode,
+                GatewayErrorCategory: gatewayError?.Category.ToString(),
+                GatewayErrorField: gatewayError?.Field);
         }
     }
 
