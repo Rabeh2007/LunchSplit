@@ -45,23 +45,35 @@ public sealed class SquarePaymentService : IPaymentProcessor, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(request.IdempotencyKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.CardNonce);
 
-        // Convert dollars exactly once, at the vendor boundary. No floating point arithmetic.
-        var response = await client.Payments.CreateAsync(new CreatePaymentRequest
+        try
         {
-            SourceId = request.CardNonce,
-            IdempotencyKey = request.IdempotencyKey,
-            AmountMoney = new Money
+            // Convert dollars exactly once, at the vendor boundary. No floating point arithmetic.
+            var response = await client.Payments.CreateAsync(new CreatePaymentRequest
             {
-                Amount = checked((long)(request.Amount * 100m)),
-                Currency = new Currency(request.Currency.ToUpperInvariant())
-            },
-            LocationId = locationId,
-            Autocomplete = true
-        });
-        var payment = response.Payment;
-        return payment?.Status is "COMPLETED" or "APPROVED"
-            ? new PaymentResult(true, payment.Id, HttpStatusCode: 200)
-            : new PaymentResult(false, payment?.Id, "PAYMENT_NOT_COMPLETED", 200);
+                SourceId = request.CardNonce,
+                IdempotencyKey = request.IdempotencyKey,
+                AmountMoney = new Money
+                {
+                    Amount = checked((long)(request.Amount * 100m)),
+                    Currency = new Currency(request.Currency.ToUpperInvariant())
+                },
+                LocationId = locationId,
+                Autocomplete = true
+            });
+            var payment = response.Payment;
+            return payment?.Status is "COMPLETED" or "APPROVED"
+                ? new PaymentResult(true, payment.Id, HttpStatusCode: 200)
+                : new PaymentResult(false, payment?.Id, "PAYMENT_NOT_COMPLETED", 200);
+        }
+        catch (SquareApiException error)
+        {
+            // Square can return GENERIC_DECLINE for the declined magic nonce.
+            // Expose the stable domain code while preserving the actual vendor code.
+            var gatewayCode = error.Errors.FirstOrDefault()?.Code.ToString() ?? "GATEWAY_ERROR";
+            var domainCode = gatewayCode == "GENERIC_DECLINE" ? "CARD_DECLINED" : gatewayCode;
+            return new PaymentResult(false, ErrorCode: domainCode,
+                HttpStatusCode: error.StatusCode, GatewayErrorCode: gatewayCode);
+        }
     }
 
     public Task<PaymentStatus> GetTransactionStatusAsync(string transactionId)
