@@ -12,6 +12,26 @@ public class SquareSandboxTests
         string currency = "CAD") => new(1.00m, currency, Guid.NewGuid().ToString(), nonce);
 
     [TestMethod]
+    public async Task M3_09_DuplicateIdempotencyKey_ReturnsOriginalTransaction()
+    {
+        // Arrange: a new key isolates this test run from previous Sandbox payments.
+        using var service = SquarePaymentService.FromEnvironment();
+        var request = Request();
+
+        // Act: resend the identical payment, as a client would after losing a response.
+        var original = await service.ProcessPaymentAsync(request);
+        Assert.IsTrue(original.IsSuccess, $"Original payment failed: {original.ErrorCode}");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(original.TransactionId));
+        var retry = await service.ProcessPaymentAsync(request);
+
+        // Assert: Square returns the original payment rather than creating a second charge.
+        Assert.IsTrue(retry.IsSuccess, $"Retried payment failed: {retry.ErrorCode}");
+        Assert.AreEqual(200, original.HttpStatusCode);
+        Assert.AreEqual(200, retry.HttpStatusCode);
+        Assert.AreEqual(original.TransactionId, retry.TransactionId);
+    }
+
+    [TestMethod]
     public async Task M3_08_EurPaymentAtCadLocation_ReturnsHttp400ValidationError()
     {
         // Arrange: EUR is valid currency syntax but is unsupported by our CAD location.
