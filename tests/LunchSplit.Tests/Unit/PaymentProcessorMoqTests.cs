@@ -28,6 +28,23 @@ public class PaymentProcessorMoqTests
     }
 
     [TestMethod]
+    public async Task M3_05_ZeroDollarRequest_NeverInvokesGateway()
+    {
+        // Arrange: a strict mock also fails if an unexpected call slips through.
+        var processor = new Mock<IPaymentProcessor>(MockBehavior.Strict);
+        var manager = new PaymentManager(processor.Object);
+
+        // Act: a free bill should be rejected before contacting Square.
+        var result = await manager.PayAsync(Request(0m));
+
+        // Assert.
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual("INVALID_AMOUNT", result.ErrorCode);
+        processor.Verify(p => p.ProcessPaymentAsync(It.IsAny<PaymentRequest>()), Times.Never);
+        processor.VerifyNoOtherCalls();
+    }
+
+    [TestMethod]
     public async Task M3_04_Payment_ForwardsExactDollarAmountOnce()
     {
         // Arrange: a fractional dollar amount exposes accidental cents conversion here.

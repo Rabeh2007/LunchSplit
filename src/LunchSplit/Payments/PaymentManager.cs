@@ -13,6 +13,10 @@ public sealed class PaymentManager
     public async Task<PaymentResult> PayAsync(PaymentRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        // Do not submit zero, negative, or fractional-cent amounts to the gateway.
+        if (request.Amount <= 0m || decimal.Round(request.Amount, 2) != request.Amount)
+            return new PaymentResult(false, ErrorCode: "INVALID_AMOUNT");
+
         try
         {
             return await processor.ProcessPaymentAsync(request);
