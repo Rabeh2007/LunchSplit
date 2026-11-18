@@ -12,6 +12,33 @@ public class PaymentProcessorMoqTests
         new(amount, "CAD", Guid.NewGuid().ToString(), "cnon:card-nonce-ok");
 
     [TestMethod]
+    public async Task M3_06_FourAttendeeBill_InvokesGatewayExactlyFourTimes()
+    {
+        // Arrange: use Assignment 1's real splitter, with four equally weighted attendees.
+        var bill = new Bill(40m, 0m, TipMode.None, 0m);
+        var attendees = Enumerable.Range(1, 4)
+            .Select(i => new Attendee($"Attendee {i}", 1, true)).ToList();
+        var requests = new List<PaymentRequest>();
+        var processor = new Mock<IPaymentProcessor>(MockBehavior.Strict);
+        processor.Setup(p => p.ProcessPaymentAsync(It.IsAny<PaymentRequest>()))
+            .Callback<PaymentRequest>(requests.Add)
+            .ReturnsAsync(new PaymentResult(true, "transaction-06"));
+        var manager = new PaymentManager(processor.Object);
+
+        // Act.
+        var summary = await manager.PayBillAsync(bill, attendees, "CAD",
+            "cnon:card-nonce-ok", "batch-06");
+
+        // Assert: four calls, exact total, and a distinct retry key for each share.
+        processor.Verify(p => p.ProcessPaymentAsync(It.IsAny<PaymentRequest>()), Times.Exactly(4));
+        Assert.AreEqual(4, summary.SuccessCount);
+        Assert.AreEqual(40m, requests.Sum(r => r.Amount));
+        Assert.IsTrue(requests.All(r => r.Amount == 10m));
+        Assert.AreEqual(4, requests.Select(r => r.IdempotencyKey).Distinct().Count());
+        processor.VerifyNoOtherCalls();
+    }
+
+    [TestMethod]
     public async Task M3_03_NetworkTimeout_ThrowsDomainTimeoutException()
     {
         // Arrange: no network is used; the mock simulates a failed HTTP request.
