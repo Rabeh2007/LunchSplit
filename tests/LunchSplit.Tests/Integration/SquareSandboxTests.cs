@@ -12,6 +12,22 @@ public class SquareSandboxTests
         string currency = "CAD") => new(1.00m, currency, Guid.NewGuid().ToString(), nonce);
 
     [TestMethod]
+    public async Task M3_10_CompletedPayment_StatusQueryReturnsCompleted()
+    {
+        // Arrange: create this test's own payment so it never relies on test execution order.
+        using var service = SquarePaymentService.FromEnvironment();
+        var payment = await service.ProcessPaymentAsync(Request());
+        Assert.IsTrue(payment.IsSuccess, $"Payment setup failed: {payment.ErrorCode}");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(payment.TransactionId));
+
+        // Act: retrieve the stored payment through GET /v2/payments/{payment_id}.
+        var status = await service.GetTransactionStatusAsync(payment.TransactionId!);
+
+        // Assert: the domain state matches the completed Sandbox transaction.
+        Assert.AreEqual(PaymentStatus.COMPLETED, status);
+    }
+
+    [TestMethod]
     public async Task M3_09_DuplicateIdempotencyKey_ReturnsOriginalTransaction()
     {
         // Arrange: a new key isolates this test run from previous Sandbox payments.

@@ -79,9 +79,17 @@ public sealed class SquarePaymentService : IPaymentProcessor, IDisposable
         }
     }
 
-    public Task<PaymentStatus> GetTransactionStatusAsync(string transactionId)
+    /// <summary>Retrieves the gateway state instead of assuming that a prior request succeeded.</summary>
+    public async Task<PaymentStatus> GetTransactionStatusAsync(string transactionId)
     {
-        throw new NotImplementedException();
+        ArgumentException.ThrowIfNullOrWhiteSpace(transactionId);
+        var response = await client.Payments.GetAsync(new GetPaymentsRequest
+        {
+            PaymentId = transactionId
+        });
+        // Preserve forward compatibility if Square introduces an unfamiliar status.
+        return Enum.TryParse<PaymentStatus>(response.Payment?.Status, out var status)
+            && Enum.IsDefined(status) ? status : PaymentStatus.UNKNOWN;
     }
 
     public void Dispose() => httpClient.Dispose();
