@@ -26,4 +26,26 @@ public class PaymentProcessorMoqTests
             () => manager.PayAsync(Request()));
         Assert.AreSame(transportError, error.InnerException);
     }
+
+    [TestMethod]
+    public async Task M3_04_Payment_ForwardsExactDollarAmountOnce()
+    {
+        // Arrange: a fractional dollar amount exposes accidental cents conversion here.
+        var request = Request(23.47m);
+        var expected = new PaymentResult(true, "transaction-04");
+        var processor = new Mock<IPaymentProcessor>(MockBehavior.Strict);
+        processor.Setup(p => p.ProcessPaymentAsync(request)).ReturnsAsync(expected);
+        var manager = new PaymentManager(processor.Object);
+
+        // Act.
+        var result = await manager.PayAsync(request);
+
+        // Assert: preserve every request field and invoke the boundary only once.
+        Assert.AreSame(expected, result);
+        processor.Verify(p => p.ProcessPaymentAsync(It.Is<PaymentRequest>(r =>
+            r.Amount == 23.47m && r.Currency == request.Currency &&
+            r.IdempotencyKey == request.IdempotencyKey && r.CardNonce == request.CardNonce)),
+            Times.Once);
+        processor.VerifyNoOtherCalls();
+    }
 }
