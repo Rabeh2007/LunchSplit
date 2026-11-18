@@ -12,6 +12,33 @@ public class PaymentProcessorMoqTests
         new(amount, "CAD", Guid.NewGuid().ToString(), "cnon:card-nonce-ok");
 
     [TestMethod]
+    public async Task M3_07_SecondAttendeeDeclines_ReportsTwoSuccessesAndOneFailure()
+    {
+        // Arrange: distinct requests let the mock identify each attendee precisely.
+        var requests = new[] { Request(10m), Request(20m), Request(30m) };
+        var processor = new Mock<IPaymentProcessor>(MockBehavior.Strict);
+        processor.Setup(p => p.ProcessPaymentAsync(requests[0]))
+            .ReturnsAsync(new PaymentResult(true, "attendee-1"));
+        processor.Setup(p => p.ProcessPaymentAsync(requests[1]))
+            .ReturnsAsync(new PaymentResult(false, ErrorCode: "CARD_DECLINED"));
+        processor.Setup(p => p.ProcessPaymentAsync(requests[2]))
+            .ReturnsAsync(new PaymentResult(true, "attendee-3"));
+        var manager = new PaymentManager(processor.Object);
+
+        // Act: a declined card must not prevent attendee 3 from being processed.
+        var summary = await manager.PayBatchAsync(requests);
+
+        // Assert: retain the individual decline alongside the successful payments.
+        Assert.AreEqual(2, summary.SuccessCount);
+        Assert.AreEqual(1, summary.FailureCount);
+        Assert.AreEqual("CARD_DECLINED", summary.Results[1].ErrorCode);
+        Assert.AreEqual("attendee-3", summary.Results[2].TransactionId);
+        foreach (var request in requests)
+            processor.Verify(p => p.ProcessPaymentAsync(request), Times.Once);
+        processor.VerifyNoOtherCalls();
+    }
+
+    [TestMethod]
     public async Task M3_06_FourAttendeeBill_InvokesGatewayExactlyFourTimes()
     {
         // Arrange: use Assignment 1's real splitter, with four equally weighted attendees.
